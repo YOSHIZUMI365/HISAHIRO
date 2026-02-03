@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MR.CarNews - 自動車ニュース・相場情報</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
+        }
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="app"></div>
+
+    <script>
+        // アプリケーション状態
+        const state = {
+            activeTab: 'news',
+            searchQuery: '',
+            selectedCategory: 'all',
+            mobileMenuOpen: false,
+            lastUpdate: new Date(),
+            autoRefresh: true,
+            
+            breakingNews: [
+                { id: 1, text: 'トヨタ、新型クラウン発表', time: '5分前' },
+                { id: 2, text: 'テスラ値下げ実施中', time: '12分前' },
+                { id: 3, text: 'ランクル相場高騰中', time: '18分前' }
+            ],
+            
+            news: [
+                {
+                    id: 1,
+                    title: '【速報】トヨタ、新型クラウン2026年モデルを発表',
+                    category: 'new-model',
+                    source: 'AutoNews Japan',
+                    timestamp: '15分前',
+                    views: 12543,
+                    comments: 89,
+                    premium: false
+                },
+                {
+                    id: 2,
+                    title: '中古車相場急上昇：ランドクルーザー300系が過去最高値を記録',
+                    category: 'market',
+                    source: 'Car Market Watch',
+                    timestamp: '1時間前',
+                    views: 8932,
+                    comments: 156,
+                    premium: true
+                },
+                {
+                    id: 3,
+                    title: 'テスラ、日本市場でModel 3の大幅値下げを実施',
+                    category: 'overseas',
+                    source: 'EV Times',
+                    timestamp: '2時間前',
+                    views: 15234,
+                    comments: 203,
+                    premium: false
+                },
+                {
+                    id: 4,
+                    title: '【業者必見】オークション落札相場レポート 2026年1月',
+                    category: 'dealer',
+                    source: 'Pro Dealer Info',
+                    timestamp: '3時間前',
+                    views: 5621,
+                    comments: 67,
+                    premium: true
+                },
+                {
+                    id: 5,
+                    title: 'ホンダ、新型シビックType Rの予約受付開始',
+                    category: 'new-model',
+                    source: 'Honda Official',
+                    timestamp: '5時間前',
+                    views: 9876,
+                    comments: 134,
+                    premium: false
+                }
+            ],
+            
+            marketData: [
+                { model: 'BMW M5 (FV44M)', avgPrice: '¥18,305,000', trend: '+8%', volume: 10, detail: 'H22-H26年式' },
+                { model: 'トヨタ アルファード', avgPrice: '¥4,580,000', trend: '+12%', volume: 234, detail: '30系後期' },
+                { model: 'トヨタ ランドクルーザー', avgPrice: '¥8,920,000', trend: '+28%', volume: 89, detail: '300系' },
+                { model: 'ホンダ ステップワゴン', avgPrice: '¥2,890,000', trend: '+5%', volume: 456, detail: 'SPADA' },
+                { model: 'マツダ CX-5', avgPrice: '¥2,350,000', trend: '-3%', volume: 678, detail: '2.5L' }
+            ],
+            
+            auctionData: [
+                { date: '01/13', venue: 'US横浜', year: 'H25/4', color: 'ブルー', mileage: '74千km', grade: '4.5', score: '45', price: '¥19,400,000' },
+                { date: '01/10', venue: 'US九州', year: 'H24/10', color: 'ホワイト', mileage: '106千km', grade: '4', score: '40', price: '¥15,200,000' },
+                { date: '12/20', venue: 'US九州', year: 'H26/10', color: 'ブルー', mileage: '78千km', grade: '4', score: '40', price: '¥22,350,000' },
+                { date: '11/27', venue: 'US東京', year: 'H25/3', color: 'ブルー', mileage: '115千km', grade: '4', score: '40', price: '¥16,200,000' },
+                { date: '11/07', venue: 'US名古', year: 'H24/5', color: 'ホワイト', mileage: '70千km', grade: '4.5', score: '45', price: '¥19,200,000' }
+            ],
+            
+            categories: [
+                { id: 'all', name: '全て' },
+                { id: 'new-model', name: '新型車' },
+                { id: 'market', name: '相場情報' },
+                { id: 'overseas', name: '海外動向' },
+                { id: 'dealer', name: '業者向け' }
+            ]
+        };
+
+        // カテゴリーバッジの色
+        function getCategoryColor(category) {
+            const colors = {
+                'new-model': 'bg-blue-100 text-blue-700',
+                'market': 'bg-green-100 text-green-700',
+                'overseas': 'bg-purple-100 text-purple-700',
+                'dealer': 'bg-orange-100 text-orange-700'
+            };
+            return colors[category] || 'bg-gray-100 text-gray-700';
+        }
+
+        // ニュースフィルター
+        function getFilteredNews() {
+            return state.news.filter(item => 
+                (state.selectedCategory === 'all' || item.category === state.selectedCategory) &&
+                (state.searchQuery === '' || item.title.toLowerCase().includes(state.searchQuery.toLowerCase()))
+            );
+        }
+
+        // レンダリング関数
+        function render() {
+            const app = document.getElementById('app');
+            const filteredNews = getFilteredNews();
+            
+            app.innerHTML = `
+                <!-- ヘッダー -->
+                <header class="bg-gradient-to-r from-blue-900 to-blue-700 text-white sticky top-0 z-50 shadow-lg">
+                    <div class="max-w-7xl mx-auto px-4">
+                        <div class="flex items-center justify-between py-3">
+                            <div class="flex items-center space-x-3">
+                                <img src="data:image/png;base64,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" 
+                                     alt="MR.CarNews Logo" 
+                                     class="w-12 h-12 md:w-14 md:h-14 rounded-full shadow-md">
+                                <div>
+                                    <h1 class="text-xl font-bold">MR.CarNews</h1>
+                                    <p class="text-xs text-blue-200">powered by MR.GARAGE</p>
+                                </div>
+                            </div>
+                            <button onclick="toggleMobileMenu()" class="md:hidden">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${state.mobileMenuOpen ? 'M6 18L18 6M6 6l12 12' : 'M4 6h16M4 12h16M4 18h16'}"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        <!-- モバイルメニュー -->
+                        ${state.mobileMenuOpen ? `
+                        <div class="md:hidden pb-4 space-y-2">
+                            <button onclick="switchTab('news')" class="w-full text-left px-3 py-2 rounded hover:bg-blue-800">ニュース</button>
+                            <button onclick="switchTab('market')" class="w-full text-left px-3 py-2 rounded hover:bg-blue-800">相場情報</button>
+                            <button onclick="switchTab('search')" class="w-full text-left px-3 py-2 rounded hover:bg-blue-800">車両検索</button>
+                            <button onclick="switchTab('forum')" class="w-full text-left px-3 py-2 rounded hover:bg-blue-800">掲示板</button>
+                        </div>
+                        ` : ''}
+                    </div>
+                </header>
+
+                <!-- 速報バナー -->
+                <div class="bg-red-600 text-white py-2">
+                    <div class="max-w-7xl mx-auto px-4 flex items-center justify-between">
+                        <div class="flex items-center space-x-2 flex-1 overflow-hidden">
+                            <span class="animate-pulse">🔔</span>
+                            <div class="flex items-center space-x-4 overflow-x-auto">
+                                ${state.breakingNews.map((item, idx) => `
+                                    <span class="text-sm font-semibold whitespace-nowrap">
+                                        【速報】${item.text}${idx < state.breakingNews.length - 1 ? ' | ' : ''}
+                                    </span>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <button onclick="updateBreakingNews()" class="ml-2 p-1 hover:bg-red-700 rounded">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- メインコンテンツ -->
+                <div class="max-w-7xl mx-auto px-4 py-4">
+                    ${state.activeTab === 'news' ? `
+                        <div class="bg-white rounded-lg shadow-md p-4">
+                            <h2 class="text-xl font-bold text-gray-900 mb-4">最新ニュース</h2>
+                            
+                            <!-- カテゴリーフィルター -->
+                            <div class="flex flex-wrap gap-2 mb-4">
+                                ${state.categories.map(cat => `
+                                    <button onclick="selectCategory('${cat.id}')" 
+                                        class="px-3 py-1.5 rounded-full text-xs transition ${
+                                            state.selectedCategory === cat.id 
+                                                ? 'bg-blue-600 text-white' 
+                                                : 'bg-gray-100 text-gray-700'
+                                        }">
+                                        ${cat.name}
+                                    </button>
+                                `).join('')}
+                            </div>
+
+                            <!-- ニュース一覧 -->
+                            <div class="space-y-3">
+                                ${filteredNews.map(item => `
+                                    <div class="border border-gray-200 rounded-lg p-3 hover:shadow-md transition">
+                                        <div class="flex items-center space-x-2 mb-2">
+                                            <span class="text-xs px-2 py-1 rounded-full ${getCategoryColor(item.category)}">
+                                                ${state.categories.find(c => c.id === item.category)?.name}
+                                            </span>
+                                            <span class="text-xs text-gray-500">${item.timestamp}</span>
+                                            ${item.premium ? '<span class="text-xs px-2 py-1 bg-yellow-500 text-gray-900 rounded font-bold">PRO</span>' : ''}
+                                        </div>
+                                        <h3 class="font-bold text-gray-900 mb-2">${item.title}</h3>
+                                        <p class="text-xs text-gray-600 mb-2">ソース: ${item.source}</p>
+                                        <div class="flex items-center space-x-4 text-xs text-gray-500">
+                                            <span>👁️ ${item.views.toLocaleString()}</span>
+                                            <span>💬 ${item.comments}</span>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${state.activeTab === 'market' ? `
+                        <div class="space-y-4">
+                            <!-- 相場情報 -->
+                            <div class="bg-white rounded-lg shadow-md p-4">
+                                <h2 class="text-xl font-bold text-gray-900 mb-4">リアルタイム相場情報</h2>
+                                <div class="space-y-3">
+                                    ${state.marketData.map(item => `
+                                        <div class="border border-gray-200 rounded-lg p-3">
+                                            <h3 class="font-bold text-gray-900">${item.model}</h3>
+                                            <p class="text-xs text-gray-500 mb-2">${item.detail}</p>
+                                            <div class="grid grid-cols-3 gap-2">
+                                                <div>
+                                                    <p class="text-xs text-gray-600">平均価格</p>
+                                                    <p class="text-lg font-bold text-blue-600">${item.avgPrice}</p>
+                                                </div>
+                                                <div>
+                                                    <p class="text-xs text-gray-600">変動率</p>
+                                                    <p class="text-base font-bold ${item.trend.startsWith('+') ? 'text-green-600' : 'text-red-600'}">
+                                                        ${item.trend}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p class="text-xs text-gray-600">取引数</p>
+                                                    <p class="text-base font-bold text-gray-700">${item.volume}件</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+
+                            <!-- オークション実績 -->
+                            <div class="bg-white rounded-lg shadow-md p-4">
+                                <h2 class="text-xl font-bold text-gray-900 mb-4">オークション落札実績</h2>
+                                <div class="grid grid-cols-2 gap-3 mb-4">
+                                    <div class="bg-blue-50 rounded-lg p-3">
+                                        <p class="text-xs text-gray-600">検索件数</p>
+                                        <p class="text-2xl font-bold text-blue-700">10件</p>
+                                    </div>
+                                    <div class="bg-green-50 rounded-lg p-3">
+                                        <p class="text-xs text-gray-600">平均価格</p>
+                                        <p class="text-xl font-bold text-green-700">¥18.3M</p>
+                                    </div>
+                                </div>
+                                <div class="space-y-3">
+                                    ${state.auctionData.map(item => `
+                                        <div class="border border-gray-200 rounded-lg p-3">
+                                            <div class="flex justify-between items-start mb-2">
+                                                <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">${item.venue}</span>
+                                                <p class="text-lg font-bold text-blue-600">${item.price}</p>
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                                <div><span class="text-gray-600">年式:</span> ${item.year}</div>
+                                                <div><span class="text-gray-600">色:</span> ${item.color}</div>
+                                                <div><span class="text-gray-600">走行:</span> ${item.mileage}</div>
+                                                <div><span class="text-gray-600">評価:</span> <span class="font-bold">${item.grade}</span></div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${state.activeTab === 'search' ? `
+                        <div class="bg-white rounded-lg shadow-md p-4">
+                            <h2 class="text-xl font-bold text-gray-900 mb-4">車両検索</h2>
+                            <p class="text-gray-600">検索機能は準備中です</p>
+                        </div>
+                    ` : ''}
+
+                    ${state.activeTab === 'forum' ? `
+                        <div class="bg-white rounded-lg shadow-md p-4">
+                            <h2 class="text-xl font-bold text-gray-900 mb-4">掲示板</h2>
+                            <p class="text-gray-600">掲示板機能は準備中です</p>
+                        </div>
+                    ` : ''}
+                </div>
+
+                <!-- フッター -->
+                <footer class="bg-gray-900 text-white py-6 mt-8">
+                    <div class="max-w-7xl mx-auto px-4 text-center">
+                        <p class="text-sm">© 2026 MR.CarNews. Powered by MR.GARAGE</p>
+                    </div>
+                </footer>
+            `;
+        }
+
+        // イベントハンドラー
+        function switchTab(tab) {
+            state.activeTab = tab;
+            state.mobileMenuOpen = false;
+            render();
+        }
+
+        function toggleMobileMenu() {
+            state.mobileMenuOpen = !state.mobileMenuOpen;
+            render();
+        }
+
+        function selectCategory(categoryId) {
+            state.selectedCategory = categoryId;
+            render();
+        }
+
+        function updateBreakingNews() {
+            state.lastUpdate = new Date();
+            alert('速報を更新しました！');
+        }
+
+        // 自動更新（30秒ごと）
+        setInterval(() => {
+            if (state.autoRefresh) {
+                state.lastUpdate = new Date();
+                // 実際はここでAPIから最新データを取得
+            }
+        }, 30000);
+
+        // 初回レンダリング
+        render();
+    </script>
+</body>
+</html>
